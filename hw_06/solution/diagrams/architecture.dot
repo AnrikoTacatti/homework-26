@@ -1,0 +1,125 @@
+digraph Architecture {
+    rankdir=TB;
+    fontname="Helvetica";
+    bgcolor="white";
+    compound=true;
+    nodesep=0.35;
+    ranksep=0.55;
+
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=12 margin="0.18,0.12" color="#5F5E5A" fontcolor="#2C2C2A"];
+    edge [fontname="Helvetica" fontsize=10 color="#888780" fontcolor="#444441" arrowsize=0.7];
+
+    // ===== Client =====
+    subgraph cluster_client {
+        label="Клиенты";
+        style="dashed"; color="#B4B2A9"; fontsize=13; fontcolor="#444441";
+        Client [label="Client\n(Web / Mobile)" fillcolor="#F1EFE8"];
+    }
+
+    // ===== Edge =====
+    subgraph cluster_edge {
+        label="Edge";
+        style="dashed"; color="#85B7EB"; fontsize=13; fontcolor="#444441";
+        CDN [label="CDN" fillcolor="#B5D4F4"];
+        LB  [label="Load Balancer ×2\nleast connections + health-check" fillcolor="#B5D4F4"];
+        GW  [label="API Gateway Kong/Envoy ×2+\nRate Limit, JWT Auth, роутинг" fillcolor="#B5D4F4"];
+    }
+
+    // ===== Business services =====
+    subgraph cluster_business {
+        label="Бизнес-сервисы";
+        style="dashed"; color="#5DCAA5"; fontsize=13; fontcolor="#444441";
+        AdvertC    [label="Advert Create\nService" fillcolor="#9FE1CB"];
+        AdvertR    [label="Advert Read\nService ×~30" fillcolor="#9FE1CB"];
+        Resizer    [label="Image Resizer\n3 размера, ≤1 МБ" fillcolor="#9FE1CB"];
+        Search     [label="Search Service ×~12" fillcolor="#AFA9EC"];
+        Indexer    [label="Search Indexer ×~5" fillcolor="#AFA9EC"];
+        Chat       [label="Chat Service" fillcolor="#85B7EB"];
+        Review     [label="Review Service" fillcolor="#ED93B1"];
+        Order      [label="Order Service" fillcolor="#F0997B"];
+        PaymentLog [label="Payment Status Log\nнеизменяемый журнал" fillcolor="#F0997B"];
+        Delivery   [label="Delivery Service" fillcolor="#F0997B"];
+        Moderation [label="Moderation\nService" fillcolor="#FAC775"];
+    }
+
+    // ===== Data layer =====
+    subgraph cluster_data {
+        label="Хранилища и брокер сообщений";
+        style="dashed"; color="#B4B2A9"; fontsize=13; fontcolor="#444441";
+        Mongo [label="MongoDB — source of truth\nReplica Set: 1 primary + 2 secondary" shape=cylinder fillcolor="#D3D1C7"];
+        Redis [label="Redis Cache (LFU)\ncache-aside" shape=cylinder fillcolor="#D3D1C7"];
+        RedisPS [label="Redis Pub/Sub\nчат (best-effort)" shape=cylinder fillcolor="#D3D1C7"];
+        ES    [label="Elasticsearch\nшарды + реплики" shape=cylinder fillcolor="#AFA9EC"];
+        S3    [label="S3\nBlob storage" shape=cylinder fillcolor="#D3D1C7"];
+        Kafka [label="Kafka ×3 (RF=3)\nсобытия объявлений" shape=component fillcolor="#FAC775"];
+    }
+
+    // ===== External systems =====
+    subgraph cluster_external {
+        label="Внешние системы";
+        style="dashed"; color="#B4B2A9"; fontsize=13; fontcolor="#444441";
+        Payment     [label="Payment Provider" shape=box3d fillcolor="#F1EFE8"];
+        DeliveryExt [label="Delivery Provider" shape=box3d fillcolor="#F1EFE8"];
+    }
+
+    // ===== Observability =====
+    subgraph cluster_obs {
+        label="Observability (сквозной слой для всех сервисов)";
+        style="dashed"; color="#B4B2A9"; fontsize=13; fontcolor="#444441";
+        ELK        [label="ELK" fillcolor="#F1EFE8"];
+        Prometheus [label="Prometheus" fillcolor="#F1EFE8"];
+        Grafana    [label="Grafana" fillcolor="#F1EFE8"];
+    }
+
+    // ===== Edges: client & edge =====
+    Client -> LB;
+    LB -> GW;
+    Client -> CDN [label="фото"];
+    CDN -> S3;
+
+    // ===== Edges: gateway routing =====
+    GW -> AdvertC [label="createAdv()"];
+    GW -> AdvertR [label="get(adv_id)"];
+    GW -> Search  [label="search()"];
+    GW -> Chat;
+    GW -> Review;
+    GW -> Order;
+
+    // ===== Edges: advert create & photo =====
+    AdvertC -> Mongo;
+    AdvertC -> Resizer [label="фото"];
+    Resizer -> S3;
+    AdvertC -> Kafka [label="event"];
+
+    // ===== Edges: advert read =====
+    AdvertR -> Redis;
+    Redis -> Mongo [label="cache miss" style=dashed];
+    RedisPS -> Mongo [label="история чата (fallback)" style=dashed];
+
+    // ===== Edges: search & indexing =====
+    Search -> ES;
+    Kafka -> Indexer;
+    Indexer -> ES;
+
+    // ===== Edges: moderation =====
+    Kafka -> Moderation;
+    Moderation -> Mongo [label="статус"];
+
+    // ===== Edges: chat =====
+    Chat -> RedisPS [label="pub/sub"];
+    Chat -> Mongo [label="история"];
+
+    // ===== Edges: reviews =====
+    Review -> Mongo [label="отзывы"];
+
+    // ===== Edges: order / payment / delivery =====
+    Order -> Payment [label="initiate() + retry/CB"];
+    Payment -> PaymentLog [label="webhook: status" color="#5F9EA0" fontcolor="#5F9EA0"];
+    PaymentLog -> Order [label="update"];
+    Order -> Client [label="GET /v1/orders/{id} или SSE" style=dashed color="#5F9EA0" fontcolor="#5F9EA0" constraint=false];
+    Order -> Delivery [label="после paid" style=dashed];
+    Delivery -> DeliveryExt [label="timeout + retry"];
+
+    // ===== Observability note (dashed, no real edges to avoid clutter) =====
+    Mongo -> ELK [style=invis];
+}
