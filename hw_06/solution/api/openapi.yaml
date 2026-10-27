@@ -1,0 +1,128 @@
+openapi: 3.0.3
+info:
+  title: Сервис объявлений с доставкой
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+paths:
+  /v1/adverts:
+    post:
+      summary: Создать объявление
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdvertCreate' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Advert' }
+        '409': { description: Тот же Idempotency-Key с другим телом }
+        '429': { description: Превышен rate limit }
+  /v1/adverts/{id}:
+    get:
+      summary: Получить объявление
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Объявление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Advert' }
+        '404': { description: Не найдено }
+  /v1/search:
+    get:
+      summary: Поиск и фильтрация (p99 < 200 мс)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: location, in: query, schema: { type: string } }
+        - { name: priceMin, in: query, schema: { type: integer } }
+        - { name: priceMax, in: query, schema: { type: integer } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Страница результатов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchPage' }
+  /v1/orders:
+    post:
+      summary: Создать заказ и инициировать оплату
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [advertId]
+              properties:
+                advertId: { type: string }
+      responses:
+        '201':
+          description: Заказ создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+  /v1/orders/{id}:
+    get:
+      summary: Статус заказа (также доступен через SSE)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    AdvertCreate:
+      type: object
+      required: [title, price, category, location]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        price: { type: integer, description: Минимальные единицы валюты }
+        currency: { type: string, example: RUB }
+        category: { type: string }
+        location: { type: string }
+        photoIds: { type: array, items: { type: string } }
+    Advert:
+      allOf:
+        - $ref: '#/components/schemas/AdvertCreate'
+        - type: object
+          properties:
+            id: { type: string }
+            status: { type: string, enum: [moderation, published, blocked, deleted] }
+            createdAt: { type: string, format: date-time }
+    SearchPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Advert' } }
+        total: { type: integer }
+        nextCursor: { type: string, nullable: true }
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        advertId: { type: string }
+        amount: { type: integer }
+        status: { type: string, enum: [created, pending, paid, failed, shipped, delivered] }
