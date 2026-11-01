@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant K as Kafka
+    participant M as Matching Service
+    participant G as Redis Geo
+    participant D as Driver Service
+    participant N as Notification Service
+    participant DA as Driver App
+    participant GW as LB + API Gateway
+    participant O as Order Service
+    participant DB as PostgreSQL
+    participant PA as Passenger App
+    K--)M: order.created
+    M->>G: поиск свободных водителей рядом
+    M->>D: резерв кандидата в Redis с TTL 15 с
+    M--)K: driver.offered
+    K--)N: driver.offered
+    N--)DA: предложение заказа
+    DA->>GW: принять заказ
+    GW->>O: назначить водителя
+    O->>DB: UPDATE при условии status = SEARCHING, outbox
+    O-->>DA: 200 или 409, если заказ уже занят
+    O--)K: order.assigned
+    K--)D: водитель становится busy
+    K--)N: order.assigned
+    N--)PA: водитель назначен

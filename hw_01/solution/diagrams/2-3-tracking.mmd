@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant DA as Driver App
+    participant T as Tracking Service
+    participant G as Redis Geo
+    participant PA as Passenger App
+    participant K as Kafka
+    participant AN as Analytics Service
+    participant CH as ClickHouse
+    DA->>T: координаты по WebSocket раз в 4 с
+    T->>G: обновить позицию водителя
+    T->>G: опубликовать в канал поездки
+    G--)T: экземпляру, который держит соединение пассажира
+    T--)PA: координаты по WebSocket
+    T--)K: location.updated
+    K--)AN: location.updated
+    AN->>CH: запись пачками

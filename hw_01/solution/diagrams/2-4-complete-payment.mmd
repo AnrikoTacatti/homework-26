@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant DA as Driver App
+    participant GW as LB + API Gateway
+    participant O as Order Service
+    participant PR as Pricing Service
+    participant DB as PostgreSQL
+    participant K as Kafka
+    participant P as Payment Service
+    participant PSP as Платёжная система
+    participant N as Notification Service
+    participant PA as Passenger App
+    DA->>GW: завершить поездку
+    GW->>O: завершить поездку
+    O->>PR: итоговая цена
+    O->>DB: статус COMPLETED и outbox
+    O-->>DA: 200, поездка завершена
+    O--)K: trip.completed
+    K--)P: trip.completed
+    P->>PSP: списание с Idempotency-Key
+    PSP-->>P: результат
+    P->>DB: статус платежа и outbox
+    P--)K: payment.succeeded или payment.failed
+    K--)N: результат оплаты
+    N--)PA: чек и экран оценки
+    N--)DA: экран оценки

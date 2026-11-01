@@ -1,0 +1,14 @@
+sequenceDiagram
+    participant PA as Passenger App
+    participant GW as LB + API Gateway
+    participant RS as Rating Service
+    participant DB as PostgreSQL
+    participant K as Kafka
+    participant D as Driver Service
+    PA->>GW: POST /ratings
+    GW->>RS: сохранить оценку
+    RS->>DB: оценка и outbox
+    RS-->>PA: 201
+    RS--)K: rating.created
+    K--)D: rating.created
+    D->>DB: пересчёт среднего рейтинга

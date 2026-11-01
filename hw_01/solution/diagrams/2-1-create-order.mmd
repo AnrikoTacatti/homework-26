@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant PA as Passenger App
+    participant GW as LB + API Gateway
+    participant O as Order Service
+    participant PS as Passenger Service
+    participant PR as Pricing Service
+    participant R as Redis
+    participant DB as PostgreSQL
+    participant K as Kafka
+    PA->>GW: POST /orders с Idempotency-Key
+    GW->>R: проверка сессии
+    GW->>O: создать заказ
+    O->>PS: профиль и способ оплаты
+    PS->>R: чтение из кэша
+    PS->>DB: только при промахе кэша
+    O->>PR: расчёт цены (маршрут от картографического провайдера)
+    O->>DB: заказ SEARCHING и outbox в одной транзакции
+    O-->>PA: 201, идёт поиск водителя
+    O--)K: order.created из outbox
+    Note over K: событие читают Matching, Notification, Pricing, Analytics
